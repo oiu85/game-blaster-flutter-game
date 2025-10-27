@@ -9,22 +9,20 @@ class Boss extends Equatable {
   final int maxHealth;
   final double width;
   final double height;
-  final int type; // 0-2 for different boss types
-  final int phase; // Current phase of the boss (for multi-phase bosses)
-  final DateTime spawnTime;
+  final int level;
+  final BossType type;
 
   const Boss({
     required this.id,
     required this.x,
     required this.y,
-    this.speed = 1.5,
+    this.speed = 1.0,
     required this.health,
     required this.maxHealth,
-    this.width = 100,
-    this.height = 100,
-    this.type = 0,
-    this.phase = 1,
-    required this.spawnTime,
+    this.width = 80,
+    this.height = 80,
+    required this.level,
+    required this.type,
   });
 
   Boss copyWith({
@@ -36,9 +34,8 @@ class Boss extends Equatable {
     int? maxHealth,
     double? width,
     double? height,
-    int? type,
-    int? phase,
-    DateTime? spawnTime,
+    int? level,
+    BossType? type,
   }) {
     return Boss(
       id: id ?? this.id,
@@ -49,36 +46,26 @@ class Boss extends Equatable {
       maxHealth: maxHealth ?? this.maxHealth,
       width: width ?? this.width,
       height: height ?? this.height,
+      level: level ?? this.level,
       type: type ?? this.type,
-      phase: phase ?? this.phase,
-      spawnTime: spawnTime ?? this.spawnTime,
     );
+  }
+
+  Boss takeDamage() {
+    return copyWith(health: (health - 1).clamp(0, maxHealth));
   }
 
   Boss move() {
     return copyWith(y: y + speed);
   }
 
-  Boss takeDamage(int damage) {
-    final newHealth = (health - damage).clamp(0, maxHealth);
-    // Check for phase transitions (every 33% health)
-    int newPhase = phase;
-    final healthPercent = newHealth / maxHealth;
-    if (healthPercent <= 0.33 && phase == 1) {
-      newPhase = 2;
-    } else if (healthPercent <= 0.66 && phase == 2) {
-      newPhase = 3;
-    }
-    
-    return copyWith(
-      health: newHealth,
-      phase: newPhase,
-    );
-  }
-
-  bool get isDead => health <= 0;
-
   @override
-  List<Object?> get props => [id, x, y, speed, health, maxHealth, width, height, type, phase, spawnTime];
+  List<Object?> get props => [id, x, y, speed, health, maxHealth, width, height, level, type];
 }
 
+enum BossType {
+  basic,
+  advanced,
+  elite,
+  ultimate,
+}

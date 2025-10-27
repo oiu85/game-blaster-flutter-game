@@ -49,15 +49,26 @@ class ShooterHudWidget extends StatelessWidget {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(Icons.star, color: Colors.yellow, size: 18.sp),
-                                    SizedBox(width: 6.w),
-                                    Text(
-                                      '${state.score}',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18.sp,
-                                      ),
+                                  SizedBox(width: 6.w),
+                                  Text(
+                                    '${state.score}',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18.sp,
                                     ),
+                                  ),
+                                  SizedBox(width: 12.w),
+                                  Icon(Icons.account_balance_wallet, color: Colors.amber, size: 16.sp),
+                                  SizedBox(width: 4.w),
+                                  Text(
+                                    '${state.coins}',
+                                    style: TextStyle(
+                                      color: Colors.amber,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16.sp,
+                                    ),
+                                  ),
                                   ],
                                 ),
                               ),
@@ -99,14 +110,14 @@ class ShooterHudWidget extends StatelessWidget {
                                       size: 12.sp,
                                     ),
                                     SizedBox(width: 4.w),
-                                    Text(
-                                      'Wave ${state.wave}',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12.sp,
-                                      ),
-                                    ),
+                                          Text(
+                                            'Level ${state.level} - Wave ${state.wave}',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12.sp,
+                                            ),
+                                          ),
                                   ],
                                 ),
                               ),

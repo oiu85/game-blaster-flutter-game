@@ -7,6 +7,8 @@ import '../../domain/entities/player.dart';
 import '../../domain/entities/bullet.dart';
 import '../../domain/entities/enemy.dart';
 import '../../domain/entities/powerup.dart';
+import '../../domain/entities/coin.dart';
+import '../../domain/entities/boss.dart';
 import '../../domain/entities/weapon.dart';
 import '../../../../core/utils/page_state.dart';
 import '../../../../core/utils/game_settings.dart';
@@ -20,7 +22,6 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
     Timer? _powerUpSpawnTimer;
   final Random _random = Random();
   int _bulletIdCounter = 0;
-  int _enemyIdCounter = 0;
   int _powerUpIdCounter = 0;
   int _enemiesKilledThisWave = 0;
   int _currentWave = 1;
@@ -41,15 +42,19 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
     on<GamePaused>(_onGamePaused);
     on<GameResumed>(_onGameResumed);
     on<GameReset>(_onGameReset);
-    on<_SpawnEnemyInternalEvent>(_onSpawnEnemy);
-    on<_RemoveExplosionsEvent>(_onRemoveExplosions);
-    on<_SpawnPowerUpInternalEvent>(_onSpawnPowerUp);
-    on<_RemoveBoostEvent>(_onRemoveBoost);
-    on<_ScreenShakeEvent>(_onScreenShake);
+    on<LevelComplete>(_onLevelComplete);
+    on<NextLevel>(_onNextLevel);
+    on<SpawnEnemyInternalEvent>(_onSpawnEnemy);
+    on<RemoveExplosionsEvent>(_onRemoveExplosions);
+    on<SpawnPowerUpInternalEvent>(_onSpawnPowerUp);
+    on<SpawnCoinInternalEvent>(_onSpawnCoin);
+    on<SpawnBossInternalEvent>(_onSpawnBoss);
+    on<RemoveBoostEvent>(_onRemoveBoost);
+    on<ScreenShakeEvent>(_onScreenShake);
   }
 
   void _onSpawnEnemy(
-    _SpawnEnemyInternalEvent event,
+    SpawnEnemyInternalEvent event,
     Emitter<ShooterState> emit,
   ) {
     emit(state.copyWith(enemies: [...state.enemies, event.enemy]));
@@ -72,6 +77,10 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
             final weaponIndex = prefs.getInt('selected_weapon') ?? 0;
             final selectedWeapon = WeaponType.values[weaponIndex.clamp(0, WeaponType.values.length - 1)];
 
+            // Load coins from storage
+            final prefsCoins = await SharedPreferences.getInstance();
+            final savedCoins = prefsCoins.getInt('player_coins') ?? 0;
+
             emit(
               state.copyWith(
                 pageState: PageState.success,
@@ -80,11 +89,16 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
                 screenHeight: event.screenHeight,
                 score: 0,
                 wave: 1,
+                level: 1,
+                coins: savedCoins,
                 bullets: [],
                 enemies: [],
                 powerUps: [],
+                coinsOnScreen: [],
                 isGameOver: false,
                 isPaused: false,
+                isLevelComplete: false,
+                currentBoss: null,
               ),
             );
       
@@ -228,11 +242,24 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
         .where((p) => p.y < state.screenHeight + 100)
         .toList();
 
+    // Move coins
+    final updatedCoins = state.coinsOnScreen
+        .map((c) => c.move())
+        .where((c) => c.y < state.screenHeight + 100)
+        .toList();
+
+    // Move boss
+    Boss? updatedBoss = state.currentBoss?.move();
+    if (updatedBoss != null && updatedBoss.y > state.screenHeight + 100) {
+      updatedBoss = null;
+    }
+
     // Check collisions: bullets vs enemies
     final remainingBullets = <Bullet>[];
     final remainingEnemies = <Enemy>[];
     final killedEnemies = <String>[];
     int newScore = state.score;
+    final bulletsToRemoveFromBoss = <Bullet>[];
 
     for (final bullet in updatedBullets) {
       bool hit = false;
@@ -265,10 +292,19 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
             final multiplier = GameSettings.getDifficultyMultiplier(difficulty);
             newScore += (10 * (enemy.type + 1) * _currentWave * multiplier).round();
             
+            // Spawn coin when enemy is killed
+            final coin = Coin(
+              id: 'coin_${DateTime.now().millisecondsSinceEpoch}',
+              x: enemy.x + enemy.width / 2 - 10,
+              y: enemy.y + enemy.height / 2,
+              value: 1 + (enemy.type ~/ 2),
+            );
+            add(SpawnCoinInternalEvent(coin));
+            
             // Add screen shake on kill (if enabled)
             final shakeEnabled = await GameSettings.isScreenShakeEnabled();
             if (shakeEnabled) {
-              add(const _ScreenShakeEvent(intensity: 5.0));
+              add(const ScreenShakeEvent(intensity: 5.0));
             }
           }
           break;
@@ -291,7 +327,7 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
     final remainingPowerUps = <PowerUp>[];
     Player updatedPlayer = state.player;
     
-    for (final powerUp in state.powerUps) {
+    for (final powerUp in updatedPowerUps) {
       if (_checkPowerUpCollision(state.player, powerUp)) {
         // Collect power-up
         if (powerUp.type == PowerUpType.health) {
@@ -303,7 +339,7 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
           // Boost expires after 5 seconds
           Future.delayed(const Duration(seconds: 5), () {
             if (!isClosed) {
-              add(_RemoveBoostEvent());
+              add(const RemoveBoostEvent());
             }
           });
         }
@@ -311,6 +347,58 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
         remainingPowerUps.add(powerUp);
       }
     }
+
+    // Check player collision with coins
+    final remainingCoins = <Coin>[];
+    int coinsCollected = 0;
+    
+    for (final coin in updatedCoins) {
+      if (_checkCoinCollision(state.player, coin)) {
+        coinsCollected += coin.value;
+      } else {
+        remainingCoins.add(coin);
+      }
+    }
+
+    // Check bullet collision with boss
+    Boss? boss = updatedBoss;
+    if (boss != null) {
+      for (final bullet in remainingBullets) {
+        final currentBoss = boss;
+        if (currentBoss != null && _checkBossCollision(bullet, currentBoss)) {
+          bulletsToRemoveFromBoss.add(bullet);
+          // Damage boss
+          var damagedBoss = currentBoss;
+          for (int i = 0; i < bullet.damage; i++) {
+            damagedBoss = damagedBoss.takeDamage();
+          }
+          boss = damagedBoss;
+          
+          if (damagedBoss.health <= 0) {
+            // Boss killed
+            final bossX = damagedBoss.x;
+            final bossY = damagedBoss.y;
+            newScore += 500 * state.level;
+            // Spawn multiple coins
+            for (int i = 0; i < 10; i++) {
+              final coin = Coin(
+                id: 'boss_coin_${DateTime.now().millisecondsSinceEpoch}_$i',
+                x: bossX + (i * 8),
+                y: bossY,
+                value: 5,
+              );
+              add(SpawnCoinInternalEvent(coin));
+            }
+            boss = null;
+            updatedBoss = null;
+          }
+          break;
+        }
+      }
+    }
+    
+    // Filter out bullets that hit boss
+    final finalRemainingBullets = remainingBullets.where((b) => !bulletsToRemoveFromBoss.contains(b)).toList();
 
     // Check player collision with enemies
     bool gameOver = false;
@@ -351,16 +439,43 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
       }
     }
 
-    // Check for wave progression (every 10 enemies killed)
+    // Check for wave progression (every 10 enemies killed = 1 level)
     int updatedWave = state.wave;
+    int updatedLevel = state.level;
+    bool levelComplete = false;
+    
     if (_enemiesKilledThisWave >= 10) {
       updatedWave++;
       _enemiesKilledThisWave = 0;
       _currentWave = updatedWave;
+      
+      // Complete level after 10 waves
+      if (updatedWave > state.level * 10) {
+        updatedLevel++;
+        levelComplete = true;
+        // Stop game loop for level complete screen
+        _stopGameLoop();
+      }
+      
+      // Spawn boss every 4 levels
+      if (updatedLevel % 4 == 0 && updatedLevel > state.level && state.currentBoss == null) {
+        final boss = Boss(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          x: state.screenWidth / 2 - 40,
+          y: -80,
+          speed: 0.8,
+          health: 20 + (updatedLevel * 5),
+          maxHealth: 20 + (updatedLevel * 5),
+          level: updatedLevel,
+          type: _getBossType(updatedLevel),
+        );
+        add(SpawnBossInternalEvent(boss));
+      }
+      
       // Big screen shake on wave completion (if enabled)
       final shakeEnabled = await GameSettings.isScreenShakeEnabled();
       if (shakeEnabled) {
-        add(const _ScreenShakeEvent(intensity: 15.0));
+        add(const ScreenShakeEvent(intensity: 15.0));
       }
     }
 
@@ -374,22 +489,33 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
 
     emit(
       state.copyWith(
-        bullets: remainingBullets,
+        bullets: finalRemainingBullets,
         enemies: enemiesWithSpawn,
         powerUps: remainingPowerUps,
+        coinsOnScreen: remainingCoins,
         player: updatedPlayer,
         score: newScore,
         wave: updatedWave,
+        level: updatedLevel,
+        coins: state.coins + coinsCollected,
         isGameOver: gameOver,
+        isLevelComplete: levelComplete,
         explosions: updatedExplosions,
         screenShake: updatedShake,
+        currentBoss: boss,
       ),
     );
+
+    // Save coins if collected
+    if (coinsCollected > 0) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('player_coins', state.coins + coinsCollected);
+    }
 
     // Remove explosions after animation duration
     Future.delayed(const Duration(milliseconds: 300), () {
       if (!isClosed) {
-        add(_RemoveExplosionsEvent(killedEnemies));
+        add(RemoveExplosionsEvent(killedEnemies));
       }
     });
 
@@ -478,7 +604,7 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
                     speed: enemy.speed * (1 + (state.wave * 0.1)) * diffMultiplier,
                     health: enemy.health + (state.wave ~/ 3),
                   );
-                  add(_SpawnEnemyInternalEvent(boostedEnemy));
+                  add(SpawnEnemyInternalEvent(boostedEnemy));
                 }
               });
             });
@@ -499,7 +625,7 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
           y: -40,
           type: powerUpType,
         );
-        add(_SpawnPowerUpInternalEvent(powerUp));
+        add(SpawnPowerUpInternalEvent(powerUp));
       }
     });
   }
@@ -533,14 +659,56 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
   }
 
   void _onSpawnPowerUp(
-    _SpawnPowerUpInternalEvent event,
+    SpawnPowerUpInternalEvent event,
     Emitter<ShooterState> emit,
   ) {
     emit(state.copyWith(powerUps: [...state.powerUps, event.powerUp]));
   }
 
+  void _onSpawnCoin(
+    SpawnCoinInternalEvent event,
+    Emitter<ShooterState> emit,
+  ) {
+    emit(state.copyWith(coinsOnScreen: [...state.coinsOnScreen, event.coin]));
+  }
+
+  void _onSpawnBoss(
+    SpawnBossInternalEvent event,
+    Emitter<ShooterState> emit,
+  ) {
+    emit(state.copyWith(currentBoss: event.boss));
+  }
+
+  void _onLevelComplete(
+    LevelComplete event,
+    Emitter<ShooterState> emit,
+  ) {
+    emit(state.copyWith(isLevelComplete: true, isPaused: true));
+  }
+
+  Future<void> _onNextLevel(
+    NextLevel event,
+    Emitter<ShooterState> emit,
+  ) async {
+    emit(state.copyWith(
+      isLevelComplete: false,
+      isPaused: false,
+      wave: 1,
+      bullets: [],
+      enemies: [],
+      powerUps: [],
+      coinsOnScreen: [],
+      explosions: {},
+      currentBoss: null,
+    ));
+    _enemiesKilledThisWave = 0;
+    _currentWave = 1;
+    _startGameLoop();
+  }
+
+
   void _onRemoveBoost(
-    _RemoveBoostEvent event,
+    RemoveBoostEvent event,
     Emitter<ShooterState> emit,
   ) {
     emit(
@@ -550,15 +718,36 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
     );
   }
 
+  BossType _getBossType(int level) {
+    if (level <= 4) return BossType.basic;
+    if (level <= 8) return BossType.advanced;
+    if (level <= 12) return BossType.elite;
+    return BossType.ultimate;
+  }
+
+  bool _checkCoinCollision(Player player, Coin coin) {
+    return player.x < coin.x + coin.width &&
+        player.x + player.width > coin.x &&
+        player.y < coin.y + coin.height &&
+        player.y + player.height > coin.y;
+  }
+
+  bool _checkBossCollision(Bullet bullet, Boss boss) {
+    return bullet.x < boss.x + boss.width &&
+        bullet.x + bullet.width > boss.x &&
+        bullet.y < boss.y + boss.height &&
+        bullet.y + bullet.height > boss.y;
+  }
+
   void _onScreenShake(
-    _ScreenShakeEvent event,
+    ScreenShakeEvent event,
     Emitter<ShooterState> emit,
   ) {
     emit(state.copyWith(screenShake: event.intensity));
   }
 
   void _onRemoveExplosions(
-    _RemoveExplosionsEvent event,
+    RemoveExplosionsEvent event,
     Emitter<ShooterState> emit,
   ) {
     final updatedExplosions = Map<String, ExplosionData>.from(state.explosions);
@@ -573,48 +762,5 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
     _stopGameLoop();
     return super.close();
   }
-}
-
-class _ScreenShakeEvent extends ShooterEvent {
-  final double intensity;
-
-  const _ScreenShakeEvent({required this.intensity});
-
-  @override
-  List<Object?> get props => [intensity];
-}
-
-class _SpawnEnemyInternalEvent extends ShooterEvent {
-  final Enemy enemy;
-
-  _SpawnEnemyInternalEvent(this.enemy);
-
-  @override
-  List<Object?> get props => [enemy];
-}
-
-class _RemoveExplosionsEvent extends ShooterEvent {
-  final List<String> explosionIds;
-
-  _RemoveExplosionsEvent(this.explosionIds);
-
-  @override
-  List<Object?> get props => [explosionIds];
-}
-
-class _SpawnPowerUpInternalEvent extends ShooterEvent {
-  final PowerUp powerUp;
-
-  _SpawnPowerUpInternalEvent(this.powerUp);
-
-  @override
-  List<Object?> get props => [powerUp];
-}
-
-class _RemoveBoostEvent extends ShooterEvent {
-  const _RemoveBoostEvent();
-
-  @override
-  List<Object?> get props => [];
 }
 

@@ -8,6 +8,9 @@ import '../bloc/shooter_state.dart';
 import '../../domain/entities/bullet.dart';
 import '../../domain/entities/enemy.dart';
 import '../../domain/entities/powerup.dart';
+import '../../domain/entities/coin.dart';
+import '../../domain/entities/boss.dart';
+import 'shooter_game_widget_coins_boss.dart';
 
 class ShooterGameWidget extends StatelessWidget {
   const ShooterGameWidget({super.key});
@@ -52,20 +55,27 @@ class ShooterGameWidget extends StatelessWidget {
               // Power-ups
               ...state.powerUps.map((powerUp) => _PowerUpWidget(powerUp: powerUp)),
 
-              // Explosions
-              ...state.explosions.values.map(
-                (explosion) => _ExplosionWidget(
-                  x: explosion.x,
-                  y: explosion.y,
+                    // Coins
+                    ...state.coinsOnScreen.map((coin) => CoinWidget(coin: coin)),
+
+                    // Boss
+                    if (state.currentBoss != null)
+                      BossWidget(boss: state.currentBoss!),
+
+                    // Explosions
+                    ...state.explosions.values.map(
+                      (explosion) => _ExplosionWidget(
+                        x: explosion.x,
+                        y: explosion.y,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
+              );
+            },
+          );
+        }
+      }
 
 class _PlayerWidget extends StatelessWidget {
   @override
