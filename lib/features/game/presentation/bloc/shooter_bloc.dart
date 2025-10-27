@@ -78,8 +78,12 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
             final selectedWeapon = WeaponType.values[weaponIndex.clamp(0, WeaponType.values.length - 1)];
 
             // Load coins from storage
-            final prefsCoins = await SharedPreferences.getInstance();
-            final savedCoins = prefsCoins.getInt('player_coins') ?? 0;
+            final savedCoins = prefs.getInt('player_coins') ?? 0;
+
+            // Load starting level from levels page
+            final startLevel = prefs.getInt('start_level') ?? 1;
+            // Clear start_level after reading
+            await prefs.remove('start_level');
 
             emit(
               state.copyWith(
@@ -89,7 +93,7 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
                 screenHeight: event.screenHeight,
                 score: 0,
                 wave: 1,
-                level: 1,
+                level: startLevel.clamp(1, 50),
                 coins: savedCoins,
                 bullets: [],
                 enemies: [],
@@ -439,35 +443,50 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
       }
     }
 
-    // Check for wave progression (every 10 enemies killed = 1 level)
+    // Check for wave progression
     int updatedWave = state.wave;
     int updatedLevel = state.level;
     bool levelComplete = false;
     
-    if (_enemiesKilledThisWave >= 10) {
+    // Enemies needed per wave varies by level (more enemies at higher levels)
+    final enemiesPerWave = 5 + (state.level ~/ 5); // 5 enemies at level 1, 6 at level 5, etc.
+    
+    if (_enemiesKilledThisWave >= enemiesPerWave) {
       updatedWave++;
       _enemiesKilledThisWave = 0;
       _currentWave = updatedWave;
       
       // Complete level after 10 waves
-      if (updatedWave > state.level * 10) {
+      if (updatedWave > 10) {
         updatedLevel++;
+        _currentWave = 1;
         levelComplete = true;
+        
+        // Save level completion progress
+        if (updatedLevel <= 50) {
+          final prefs = await SharedPreferences.getInstance();
+          final highestCompleted = prefs.getInt('highest_level_completed') ?? 0;
+          if (updatedLevel - 1 > highestCompleted) {
+            await prefs.setInt('highest_level_completed', updatedLevel - 1);
+          }
+        }
+        
         // Stop game loop for level complete screen
         _stopGameLoop();
       }
       
-      // Spawn boss every 4 levels
-      if (updatedLevel % 4 == 0 && updatedLevel > state.level && state.currentBoss == null) {
+      // Spawn boss every 4 waves within a level, or at boss levels (level % 4 == 0)
+      final shouldSpawnBoss = (updatedWave % 4 == 0) || (state.level % 4 == 0 && updatedWave == 1);
+      if (shouldSpawnBoss && state.currentBoss == null) {
         final boss = Boss(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           x: state.screenWidth / 2 - 40,
           y: -80,
           speed: 0.8,
-          health: 20 + (updatedLevel * 5),
-          maxHealth: 20 + (updatedLevel * 5),
-          level: updatedLevel,
-          type: _getBossType(updatedLevel),
+          health: 20 + (state.level * 5),
+          maxHealth: 20 + (state.level * 5),
+          level: state.level,
+          type: _getBossType(state.level),
         );
         add(SpawnBossInternalEvent(boss));
       }
@@ -579,19 +598,21 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
     });
 
     _enemySpawnTimer?.cancel();
-    // Spawn enemies faster as waves increase - progressive difficulty
+    // Spawn enemies faster as waves and levels increase - progressive difficulty
     final baseInterval = 2000;
     final waveMultiplier = state.wave.clamp(1, 20);
+    final levelMultiplier = state.level.clamp(1, 50);
     
     // Apply difficulty setting
     GameSettings.getDifficulty().then((difficulty) {
       final diffMultiplier = GameSettings.getDifficultyMultiplier(difficulty);
+      // Base spawn interval decreases with level
       final spawnInterval = Duration(
-        milliseconds: ((baseInterval - (waveMultiplier * 80)) / diffMultiplier).clamp(300, 2000).round(),
+        milliseconds: ((baseInterval - (waveMultiplier * 80) - (levelMultiplier * 20)) / diffMultiplier).clamp(200, 2000).round(),
       );
       
-      // Spawn multiple enemies per wave (more enemies at higher waves)
-      final enemiesPerSpawn = ((waveMultiplier / 3) * diffMultiplier).ceil().clamp(1, 6);
+      // Spawn more enemies at higher levels and waves
+      final enemiesPerSpawn = ((waveMultiplier / 3) * diffMultiplier * (1 + levelMultiplier / 10)).ceil().clamp(1, 8);
       
       _enemySpawnTimer = Timer.periodic(spawnInterval, (_) {
         if (!state.isPaused && !state.isGameOver) {
@@ -599,10 +620,10 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
             Future.delayed(Duration(milliseconds: i * 50), () {
               _repository.generateEnemy(state.screenWidth).then((enemy) {
                 if (!isClosed) {
-                  // Make enemies faster and stronger based on wave and difficulty
+                  // Make enemies faster and stronger based on wave, level, and difficulty
                   final boostedEnemy = enemy.copyWith(
-                    speed: enemy.speed * (1 + (state.wave * 0.1)) * diffMultiplier,
-                    health: enemy.health + (state.wave ~/ 3),
+                    speed: enemy.speed * (1 + (state.wave * 0.1) + (state.level * 0.05)) * diffMultiplier,
+                    health: enemy.health + (state.wave ~/ 3) + (state.level ~/ 2),
                   );
                   add(SpawnEnemyInternalEvent(boostedEnemy));
                 }
@@ -690,6 +711,16 @@ class ShooterBloc extends Bloc<ShooterEvent, ShooterState> {
     NextLevel event,
     Emitter<ShooterState> emit,
   ) async {
+    // Check if game is complete (50 levels)
+    if (state.level >= 50) {
+      // Game complete!
+      emit(state.copyWith(
+        isLevelComplete: true,
+        isPaused: true,
+      ));
+      return;
+    }
+    
     emit(state.copyWith(
       isLevelComplete: false,
       isPaused: false,

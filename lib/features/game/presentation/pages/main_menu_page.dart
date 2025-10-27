@@ -52,12 +52,30 @@ class MainMenuPage extends StatelessWidget {
                 ),
                 SizedBox(height: 20.h),
 
+                // Levels Button
+                _MenuButton(
+                  text: 'LEVELS',
+                  icon: Icons.stairs,
+                  color: Colors.purple,
+                  onPressed: () => context.push('/levels'),
+                ),
+                SizedBox(height: 20.h),
+
                 // Shop Button
                 _MenuButton(
                   text: 'SHOP',
                   icon: Icons.shopping_cart,
                   color: Colors.orange,
                   onPressed: () => context.push('/shop'),
+                ),
+                SizedBox(height: 20.h),
+
+                // Inventory Button
+                _MenuButton(
+                  text: 'INVENTORY',
+                  icon: Icons.inventory_2,
+                  color: Colors.teal,
+                  onPressed: () => context.push('/inventory'),
                 ),
                 SizedBox(height: 20.h),
 

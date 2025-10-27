@@ -8,8 +8,7 @@ import '../bloc/shooter_state.dart';
 import '../../domain/entities/bullet.dart';
 import '../../domain/entities/enemy.dart';
 import '../../domain/entities/powerup.dart';
-import '../../domain/entities/coin.dart';
-import '../../domain/entities/boss.dart';
+import '../../domain/entities/weapon.dart';
 import 'shooter_game_widget_coins_boss.dart';
 
 class ShooterGameWidget extends StatelessWidget {
@@ -124,25 +123,25 @@ class _BulletWidget extends StatelessWidget {
       top: bullet.y,
       child: Stack(
         children: [
-          // Bullet trail effect
+          // Bullet trail effect with weapon color
           if (bullet.isPlayerBullet)
             Container(
               width: bullet.width.w,
-              height: bullet.height.h + 20.h,
+              height: bullet.height.h + 25.h,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.yellow.withOpacity(0.0),
-                    Colors.yellow.withOpacity(0.6),
-                    Colors.orange.withOpacity(0.9),
+                    Color(bullet.colorValue).withOpacity(0.0),
+                    Color(bullet.colorValue).withOpacity(0.5),
+                    Color(bullet.colorValue).withOpacity(0.8),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(4.r),
               ),
             ),
-          // Main bullet
+          // Main bullet with enhanced visibility
           Container(
             width: bullet.width.w,
             height: bullet.height.h,
@@ -152,12 +151,16 @@ class _BulletWidget extends StatelessWidget {
                 end: Alignment.bottomCenter,
                 colors: _getBulletColors(bullet.colorValue),
               ),
-              borderRadius: BorderRadius.circular(4.r),
+              borderRadius: BorderRadius.circular(6.r),
+              border: Border.all(
+                color: Colors.white,
+                width: 1.w,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Color(bullet.colorValue).withOpacity(0.4),
-                  blurRadius: 4.r,
-                  spreadRadius: 1.r,
+                  color: Color(bullet.colorValue).withOpacity(0.8),
+                  blurRadius: 8.r,
+                  spreadRadius: 2.r,
                 ),
               ],
             ),

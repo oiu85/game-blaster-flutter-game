@@ -233,50 +233,101 @@ class ShooterHudWidget extends StatelessWidget {
                 ),
               ),
               
-              // Bottom HUD - Weapon indicator
-              Positioned(
-                bottom: 16.h,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 12.w,
-                      vertical: 6.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(20.r),
-                      border: Border.all(
-                        color: _getWeaponColor(state.player.currentWeapon),
-                        width: 2.w,
-                      ),
-                    ),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _getWeaponIcon(state.player.currentWeapon),
-                            color: _getWeaponColor(state.player.currentWeapon),
-                            size: 18.sp,
-                          ),
-                          SizedBox(width: 6.w),
-                          Text(
-                            Weapon.weapons[state.player.currentWeapon]!.name,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14.sp,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+                     // Bottom HUD - Weapon indicator with enhanced visibility
+                     Positioned(
+                       bottom: 16.h,
+                       left: 0,
+                       right: 0,
+                       child: IgnorePointer(
+                         child: Center(
+                           child: Container(
+                             padding: EdgeInsets.symmetric(
+                               horizontal: 16.w,
+                               vertical: 10.h,
+                             ),
+                             decoration: BoxDecoration(
+                               gradient: LinearGradient(
+                                 colors: [
+                                   Colors.black87,
+                                   Colors.black54,
+                                 ],
+                               ),
+                               borderRadius: BorderRadius.circular(25.r),
+                               border: Border.all(
+                                 color: _getWeaponColor(state.player.currentWeapon),
+                                 width: 3.w,
+                               ),
+                               boxShadow: [
+                                 BoxShadow(
+                                   color: _getWeaponColor(state.player.currentWeapon).withOpacity(0.6),
+                                   blurRadius: 15.r,
+                                   spreadRadius: 3.r,
+                                 ),
+                               ],
+                             ),
+                             child: FittedBox(
+                               fit: BoxFit.scaleDown,
+                               child: Row(
+                                 mainAxisSize: MainAxisSize.min,
+                                 children: [
+                                   Container(
+                                     padding: EdgeInsets.all(6.w),
+                                     decoration: BoxDecoration(
+                                       color: _getWeaponColor(state.player.currentWeapon).withOpacity(0.3),
+                                       shape: BoxShape.circle,
+                                     ),
+                                     child: Icon(
+                                       _getWeaponIcon(state.player.currentWeapon),
+                                       color: _getWeaponColor(state.player.currentWeapon),
+                                       size: 24.sp,
+                                     ),
+                                   ),
+                                   SizedBox(width: 10.w),
+                                   Column(
+                                     mainAxisSize: MainAxisSize.min,
+                                     crossAxisAlignment: CrossAxisAlignment.start,
+                                     children: [
+                                       Text(
+                                         Weapon.weapons[state.player.currentWeapon]!.name.toUpperCase(),
+                                         style: TextStyle(
+                                           color: Colors.white,
+                                           fontWeight: FontWeight.bold,
+                                           fontSize: 16.sp,
+                                           letterSpacing: 1.w,
+                                         ),
+                                       ),
+                                       Row(
+                                         children: [
+                                           Icon(Icons.speed, color: Colors.white70, size: 12.sp),
+                                           SizedBox(width: 4.w),
+                                           Text(
+                                             '${Weapon.weapons[state.player.currentWeapon]!.bulletSpeed.toStringAsFixed(0)}',
+                                             style: TextStyle(
+                                               color: Colors.white70,
+                                               fontSize: 12.sp,
+                                             ),
+                                           ),
+                                           SizedBox(width: 12.w),
+                                           Icon(Icons.bolt, color: Colors.white70, size: 12.sp),
+                                           SizedBox(width: 4.w),
+                                           Text(
+                                             '${Weapon.weapons[state.player.currentWeapon]!.damage}',
+                                             style: TextStyle(
+                                               color: Colors.white70,
+                                               fontSize: 12.sp,
+                                             ),
+                                           ),
+                                         ],
+                                       ),
+                                     ],
+                                   ),
+                                 ],
+                               ),
+                             ),
+                           ),
+                         ),
+                       ),
+                     ),
             ],
           ),
         );
